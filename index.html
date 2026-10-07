@@ -57,7 +57,6 @@
     white-space:pre-wrap; word-wrap:break-word; overflow-wrap:anywhere;
     font:inherit; font-size:1.25rem; line-height:1.5; margin:0 0 28px;
   }
-  #viewer a { color:var(--muted); }
 </style>
 </head>
 <body>
@@ -65,7 +64,6 @@
 
   <div id="viewer" hidden>
     <pre id="shown"></pre>
-    <a id="back" href="">Make your own QR code</a>
   </div>
 
   <div id="app">
@@ -136,7 +134,6 @@
     var decoded = '';
     try { decoded = decodeURIComponent(m[1]); } catch (e) { decoded = m[1]; }
     $('shown').textContent = decoded;
-    $('back').href = location.pathname;
     $('viewer').hidden = false;
     $('app').hidden = true;
     document.title = 'Scanned text';
