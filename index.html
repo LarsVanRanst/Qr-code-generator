@@ -11,6 +11,7 @@
     :root { --bg:#151515; --ink:#f1f1f1; --muted:#999; --line:#f1f1f1; --soft:#262626; }
   }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body {
     margin:0; background:var(--bg); color:var(--ink);
     font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -28,87 +29,28 @@
     border:2px solid var(--line); border-radius:3px; padding:8px 10px;
   }
   textarea { min-height:120px; resize:vertical; }
-  textarea:focus, select:focus, button:focus-visible, input:focus-visible { outline:3px solid #f5b800; outline-offset:1px; }
-  .status { font-size:.88rem; color:var(--muted); margin:6px 0 20px; min-height:1.3em; }
-  .status.err { color:#c0392b; font-weight:600; }
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
-  .note { font-size:.85rem; color:var(--muted); margin:-6px 0 18px; }
-  .colors { display:flex; gap:20px; margin-bottom:6px; }
-  .colors div { display:flex; align-items:center; gap:8px; }
-  .colors label { margin:0; font-weight:400; }
-  input[type=color] { width:36px; height:30px; padding:0; border:2px solid var(--line); border-radius:3px; background:none; cursor:pointer; }
-  .box {
-    width:100%; aspect-ratio:1; border:2px solid var(--line); background:var(--soft);
-    display:grid; place-items:center; margin-bottom:12px;
-  }
-  .box span { color:var(--muted); font-size:.9rem; text-align:center; padding:16px; }
-  canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
-  .btns { display:flex; gap:10px; }
-  button {
-    flex:1; font:inherit; font-weight:600; padding:10px; cursor:pointer;
-    border:2px solid var(--line); border-radius:3px; background:var(--ink); color:var(--bg);
-  }
-  button.light { background:var(--bg); color:var(--ink); }
-  button:disabled { opacity:.35; cursor:not-allowed; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <h1>QR code generator</h1>
-  <p class="sub">Enter text or a link, then save the code as an image.</p>
-
-  <div class="cols">
-    <div class="left">
-      <label for="text">Text or link</label>
-      <textarea id="text" placeholder="https://example.com" autofocus></textarea>
-      <div class="status" id="msg">&nbsp;</div>
-
-      <div class="row">
-        <div>
-          <label for="size">Image size</label>
-          <select id="size">
-            <option value="512">512 px</option>
-            <option value="1024" selected>1024 px</option>
-            <option value="2048">2048 px</option>
-          </select>
-        </div>
-        <div>
-          <label for="ec">Error correction</label>
-          <select id="ec">
-            <option value="L">Low</option>
-            <option value="M" selected>Medium</option>
-            <option value="Q">High</option>
-            <option value="H">Highest</option>
-          </select>
-        </div>
-      </div>
-      <p class="note" id="ecnote"></p>
-
-      <div class="colors">
-        <div><input type="color" id="fg" value="#000000"><label for="fg">Code</label></div>
-        <div><input type="color" id="bg" value="#ffffff"><label for="bg">Background</label></div>
-      </div>
-    </div>
-
-    <div class="right">
-      <div class="box">
-        <canvas id="canvas" hidden></canvas>
-        <span id="empty">Nothing to show yet</span>
-      </div>
-      <div class="btns">
-        <button id="png" disabled>Save PNG</button>
-        <button id="jpg" class="light" disabled>Save JPG</button>
-      </div>
-    </div>
-  </div>
-</div>
-
+  textarea:focus, select:focus, button:focus-visible, input:focus-visible, a:focus-visible { outline:3px solid #f5b800; outline-offset:1px; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var text = $('text'), size = $('size'), ec = $('ec'), fg = $('fg'), bg = $('bg');
-  var canvas = $('canvas'), empty = $('empty'), msg = $('msg'), ecnote = $('ecnote');
+  var pageUrl = location.origin + location.pathname;
+
+  // Viewer mode: someone scanned a code and opened this page with the text in the address.
+  var m = location.hash.match(/^#t=(.*)$/);
+  if (m) {
+    var decoded = '';
+    try { decoded = decodeURIComponent(m[1]); } catch (e) { decoded = m[1]; }
+    $('shown').textContent = decoded;
+    $('back').href = location.pathname;
+    $('viewer').hidden = false;
+    $('app').hidden = true;
+    document.title = 'Scanned text';
+    return;
+  }
+
+  var text = $('text'), size = $('size'), ec = $('ec'), fg = $('fg'), bg = $('bg'), show = $('show');
+  var canvas = $('canvas'), empty = $('empty'), msg = $('msg'), ecnote = $('ecnote'), shownote = $('shownote');
   var pngBtn = $('png'), jpgBtn = $('jpg');
   var ready = false;
 
@@ -123,34 +65,6 @@
     qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
   }
 
-  function setState(ok, message, isError) {
-    ready = ok;
-    canvas.hidden = !ok;
-    empty.hidden = ok;
-    pngBtn.disabled = jpgBtn.disabled = !ok;
-    msg.textContent = message || '\u00a0';
-    msg.className = 'status' + (isError ? ' err' : '');
-  }
-
-  function render() {
-    ecnote.textContent = notes[ec.value];
-    var value = text.value;
-    if (!value.trim()) { setState(false, ''); return; }
-    if (!window.qrcode) { setState(false, 'The QR library did not load. Check your connection.', true); return; }
-    try {
-      var qr = qrcode(0, ec.value);
-      qr.addData(value);
-      qr.make();
-      var n = qr.getModuleCount(), quiet = 4, total = n + quiet * 2;
-      var scale = Math.max(1, Math.floor(parseInt(size.value, 10) / total));
-      var px = total * scale;
-      canvas.width = canvas.height = px;
-      var ctx = canvas.getContext('2d');
-      ctx.fillStyle = bg.value;
-      ctx.fillRect(0, 0, px, px);
-      ctx.fillStyle = fg.value;
-      for (var r = 0; r < n; r++)
-        for (var c = 0; c < n; c++)
           if (qr.isDark(r, c)) ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
       setState(true, 'Image size: ' + px + ' × ' + px + ' px');
     } catch (e) {
@@ -171,7 +85,7 @@
     }, type, 0.95);
   }
 
-  [text, size, ec, fg, bg].forEach(function (el) {
+  [text, size, ec, fg, bg, show].forEach(function (el) {
     el.addEventListener('input', render);
     el.addEventListener('change', render);
   });
